@@ -3,105 +3,102 @@
 #include <semaphore.h>
 #include <string.h>
 #include <unistd.h>
-
-sem_t mutex[40], writeblock[40];
-sem_t writer_check;
-int data[40];
-//memset(data, 0 , 40*sizeof(data[0]));
-int read_count[40];
-//memset(read_count, 0, 40*sizeof(read_count[0]));
-int front=0;
-int rear=0;
+int queue[50];
+int num_readers[50];
+int f=0;
+int r=0;
+int ct=1;
+sem_t check_wr;
+sem_t binary_sem[50];
+sem_t wr[50];
+//int queue[40];
+//memset(queue, 0 , 40*sizeof(queue[0]));
+//int num_readers[40];
+//memset(num_readers, 0, 40*sizeof(num_readers[0]))
+int get_front(){
+  return f;
+}
+int get_rear(){
+  return r;
+}
 void enqueue(){
-  int num=(rand()+10)%100;
-  if ((front==0)&&(rear==39))printf("Queue is full");
+  if (r==49)printf("Queue is full");
   else{
-    rear=(rear+1)%40;
-    queue[rear]=num;
-    printf("Enqueued element %d at index %d",num,rear);
+    int num=(rand()+20)%200;
+    r++;
+    queue[r]=num;
+    printf("Enqueued element %d at index %d",num,r);
   }
 }
 void dequeue(){
-  if (front==rear)printf("Queue is empty");
+  if (r-f==0)printf("Queue is empty");
   else{
-      int num=queue[front];
-      queue[front]=0;
-      front=(front+1)%40;
-      printf("Dequeued element %d from index %d",num,front);
+      int num=queue[f];
+      f++;
+      printf("Dequeued element %d from index %d",num,f);
   }
 }
 
 void *reader(void *arg)
 {
-  int f;
-  f = ((int)arg);
-  int index=(rand())%40;
-  sem_wait(&mutex[index]);
-  read_count[index]++;
+  int temp=((int)arg);
+  int index=(rand())%50;
+  sem_wait(&binary_sem[index]);
+  num_readers[index]++;
   
-  if(read_count[index]==1)
+  if(num_readers[index]==1)
   {
-    sem_wait(&writeblock[index]);
+    sem_wait(&wr[index]);
   }
 
-  sem_post(&mutex[index]);
-  dequeue();
-  //printf("Data read by the reader%d is %d at index %d\n",f,data[index],index);
-  
-
-
-
+  sem_post(&binary_sem[index]);
+  if (ct==1){
+    dequeue();
+    ct=0;
+  }else{
+    printf("queue read by the reader%d is %d at index %d\n",f,queue[index],index);
+  }
   sleep(1);
-  
-  sem_wait(&mutex[index]);
-  
-  read_count[index]--;
-  
-  if(read_count[index]==0)
+  sem_wait(&binary_sem[index]);
+  num_readers[index]--;
+  if(num_readers[index]==0)
   {
-    sem_post(&writeblock[index]);
+    sem_post(&wr[index]);
   }
-
-  sem_post(&mutex[index]);
+  sem_post(&binary_sem[index]);
 }
-
-
 void *writer(void *arg)
 {
-
-  sem_wait(&writer_check);
-  int f;
-  f = ((int) arg);
-  int index=(rand())%40;
-  int num=(rand()+10)%100;
-  sem_wait(&writeblock[index]);
-  data[index]=num;
-  //printf("Data writen by the writer%d is %d at index %d\n",f,data[index],index);
+  int num=(rand()+20)%200;
+  int index=(rand())%50;
+  sem_wait(&check_wr);
+  int temp=((int)arg);
+  sem_wait(&wr[index]);
+  queue[index]=num;
+  //printf("queue writen by the writer%d is %d at index %d\n",f,queue[index],index);
   enqueue();
   sleep(1);
-  sem_post(&writeblock[index]);
-  sem_post(&writer_check);
+  sem_post(&wr[index]);
+  sem_post(&check_wr);
 }
 
 
 
 int main()
 {
-  int i,b; 
-  pthread_t rtid[20],wtid[20];
-  memset(data, 0 , 40*sizeof(data[0]));
-  memset(read_count, 0, 40*sizeof(read_count[0]));
-  sem_init(&writer_check, 0, 1);
-
-  for(int j=0; j<40; j++)
+  memset(queue, 0 , 40*sizeof(queue[0]));
+  memset(num_readers, 0, 40*sizeof(num_readers[0]));
+  int b; 
+  pthread_t rtid[25];
+  pthread_t wtid[25];
+  sem_init(&check_wr, 0, 1);
+  for(int j=0; j<50; j++)
   {
-
-    sem_init(&mutex[j],0,1);
-    sem_init(&writeblock[j],0,1);
- 
+    sem_init(&binary_sem[j],0,1);
+    sem_init(&wr[j],0,1);
   }
 
-  for(i=0;i<20;i++)
+  for(int i=0;i<25;i++)
   {
     pthread_create(&wtid[i],NULL,writer,(void *)i);
     sleep(1);
@@ -110,7 +107,7 @@ int main()
   }
 
 
-  for(i=0;i<20;i++)
+  for(int i=0;i<25;i++)
   {
     pthread_join(wtid[i],NULL);
     pthread_join(rtid[i],NULL);
